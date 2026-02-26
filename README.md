@@ -93,7 +93,7 @@ In a last step, it is helpful to convert the VM into a template. From this templ
 
 qm template 7000
 
-Testing creating VM Deployment
+#Testing creating VM Deployment
 
 qm clone 7000 123 --name ubuntu2
 
