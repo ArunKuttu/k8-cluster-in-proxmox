@@ -1,46 +1,79 @@
+##################################
+# Terraform & Providers
+##################################
+
 terraform {
   required_providers {
     proxmox = {
       source  = "telmate/proxmox"
       version = "2.9.11"
     }
+    local = {
+      source = "hashicorp/local"
+    }
+    null = {
+      source = "hashicorp/null"
+    }
+    template = {
+      source = "hashicorp/template"
+    }
   }
 }
 
 provider "proxmox" {
-  # make sure to export PM_API_TOKEN_ID and PM_API_TOKEN_SECRET
+  pm_api_url      = "https://192.168.1.3:8006/api2/json"
   pm_tls_insecure = true
-  pm_api_url      = "https://192.168.193.193:8006/api2/json"
-
-  # pm_log_enable = true
-  # pm_log_file   = "tf.log"
-  # pm_debug      = true
-  # pm_log_levels = {
-  #   _default    = "debug"
-  #   _capturelog = ""
-  # }
+  # Authentication via:
+  #export PM_API_TOKEN_ID=
+  #export PM_API_TOKEN_SECRET=
 }
 
+##################################
+# Cloud-init template rendering
+##################################
 
-# Create a local copy of the cloud-init file, to transfer to Proxmox
+data "template_file" "cloud_init_master" {
+  template = file("${path.module}/cloud-init/master.yaml")
+
+  vars = {
+    ssh_key = file(var.ssh_public_key_path)
+  }
+}
+
+data "template_file" "cloud_init_worker" {
+  count    = var.worker_count
+  template = file("${path.module}/cloud-init/worker.yaml")
+
+  vars = {
+    ssh_key = file(var.ssh_public_key_path)
+  }
+}
+
+##################################
+# Write rendered cloud-init locally
+##################################
+
 resource "local_file" "cloud_init_master" {
   content  = data.template_file.cloud_init_master.rendered
-  filename = "cloud_init_master_generated.cfg"
+  filename = "${path.module}/cloud_init_master_generated.yaml"
 }
 
 resource "local_file" "cloud_init_worker" {
   count    = var.worker_count
   content  = data.template_file.cloud_init_worker[count.index].rendered
-  filename = "cloud_init_worker${count.index}_generated.cfg"
+  filename = "${path.module}/cloud_init_worker_${count.index}.yaml"
 }
 
-# Transfer the file to the Proxmox Host
+##################################
+# Copy cloud-init files to Proxmox
+##################################
+
 resource "null_resource" "cloud_init_master" {
   connection {
     type        = "ssh"
     user        = "root"
-    private_key = file("~/.ssh/id_rsa")
-    host        = "192.168.193.193"
+    host        = "192.168.1.3"
+    private_key = file(var.private_key_path)
   }
 
   provisioner "file" {
@@ -51,30 +84,35 @@ resource "null_resource" "cloud_init_master" {
 
 resource "null_resource" "cloud_init_worker" {
   count = var.worker_count
+
   connection {
     type        = "ssh"
     user        = "root"
-    private_key = file("~/.ssh/id_rsa")
-    host        = "192.168.193.193"
+    host        = "192.168.1.3"
+    private_key = file(var.private_key_path)
   }
 
   provisioner "file" {
     source      = local_file.cloud_init_worker[count.index].filename
-    destination = "/var/lib/vz/snippets/cloud_init_worker${count.index}.yaml"
+    destination = "/var/lib/vz/snippets/cloud_init_worker_${count.index}.yaml"
   }
 }
 
+##################################
+# Kubernetes Master VM
+##################################
+
 resource "proxmox_vm_qemu" "master" {
-  depends_on = [
-    null_resource.cloud_init_master
-  ]
-  name        = "master"
+  depends_on = [null_resource.cloud_init_master]
+
+  name        = "k8s-master"
   target_node = var.proxmox_host
   clone       = var.template_name
   vmid        = 200
-  cores       = 2
-  sockets     = 1
-  memory      = 4096
+
+  cores   = 2
+  sockets = 1
+  memory  = 4096
 
   disk {
     size    = "30G"
@@ -82,62 +120,56 @@ resource "proxmox_vm_qemu" "master" {
     storage = "firestore"
   }
 
-  # Ignore changes to the network
-  ## MAC address is generated on every apply, causing
-  ## TF to think this needs to be rebuilt on every apply
   lifecycle {
-    ignore_changes = [
-      network,
-    ]
+    ignore_changes = [network]
   }
 
-  # Cloud init options
   cicustom  = "user=local:snippets/cloud_init_master.yaml"
-  ipconfig0 = "ip=192.168.193.20/24,gw=192.168.193.1"
+  ipconfig0 = "ip=192.168.1.6/24,gw=192.168.1.1"
 }
+
+##################################
+# Kubernetes Worker VMs
+##################################
 
 resource "proxmox_vm_qemu" "worker" {
-  count       = var.worker_count
-  name        = "worker-${count.index}"
+  count      = var.worker_count
+  depends_on = [null_resource.cloud_init_worker]
+
+  name        = "k8s-worker-${count.index}"
   target_node = var.proxmox_host
   clone       = var.template_name
-  vmid        = count.index + 300
-  cores       = 2
-  sockets     = 1
-  memory      = 4096
+  vmid        = 300 + count.index
+
+  cores   = 2
+  sockets = 1
+  memory  = 4096
+
   disk {
     size    = "30G"
     type    = "scsi"
     storage = "firestore"
   }
 
-  # Ignore changes to the network
-  ## MAC address is generated on every apply, causing
-  ## TF to think this needs to be rebuilt on every apply
   lifecycle {
-    ignore_changes = [
-      network,
-    ]
+    ignore_changes = [network]
   }
 
-  # Cloud init options
-  cicustom  = "user=local:snippets/cloud_init_worker${count.index}.yaml"
-  ipconfig0 = "ip=192.168.193.3${count.index}/24,gw=192.168.193.1"
+  cicustom  = "user=local:snippets/cloud_init_worker_${count.index}.yaml"
+  ipconfig0 = "ip=192.168.1.${7 + count.index}/24,gw=192.168.1.1"
 }
 
+##################################
+# Optional: Ansible handover
+##################################
 
 resource "null_resource" "ansible_handover" {
-  provisioner "remote-exec" {
-    inline = ["echo 'Hello World'"]
+  depends_on = [
+    proxmox_vm_qemu.master,
+    proxmox_vm_qemu.worker
+  ]
 
-    connection {
-      type        = "ssh"
-      user        = "jay"
-      host        = "worker-1"
-      private_key = file("${var.private_key_path}")
-    }
-  }
   provisioner "local-exec" {
-    command = "ansible-playbook -i 'ansible/inventory' --private-key ${var.private_key_path} ansible/k8_cluster_setup.yaml"
+    command = "ansible-playbook -i ansible/inventory --private-key ${var.private_key_path} ansible/k8_cluster_setup.yaml"
   }
 }
