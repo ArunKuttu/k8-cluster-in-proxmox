@@ -10,9 +10,17 @@ This is not production grade at all but perfect for running a 3 node cluster at 
 - Create a user with API token in Proxmox following this guide https://registry.terraform.io/providers/Telmate/proxmox/latest/docs
      Steps to do using the Doc
 
+Proxmox 9 and Newer
+
          pveum role add TerraformProv -privs "Datastore.AllocateSpace Datastore.AllocateTemplate Datastore.Audit Pool.Allocate Pool.Audit Sys.Audit Sys.Console Sys.Modify VM.Allocate VM.Audit VM.Clone VM.Config.CDROM VM.Config.Cloudinit VM.Config.CPU   VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Migrate VM.PowerMgmt SDN.Use"
          pveum user add terraform-prov@pve --password <password>
          pveum aclmod / -user terraform-prov@pve -role TerraformProv
+
+Proxmox 8 and Older
+
+     pveum role add TerraformProv -privs "Datastore.AllocateSpace Datastore.AllocateTemplate Datastore.Audit Pool.Allocate Sys.Audit Sys.Console Sys.Modify VM.Allocate VM.Audit VM.Clone VM.Config.CDROM VM.Config.Cloudinit VM.Config.CPU VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Monitor VM.Migrate VM.PowerMgmt SDN.Use"
+     pveum user add terraform-prov@pve --password <password>
+     pveum aclmod / -user terraform-prov@pve -role TerraformProv
      
 - Make sure NOT to enable privilege separation for the API key. Otherwise Terraform will not be able to find the VM template.
 - VM template (follow steps below to create a template)
