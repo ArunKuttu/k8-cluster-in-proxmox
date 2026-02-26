@@ -60,9 +60,9 @@ worker1 192.168.193.31
 ## How to create a VM template in Proxmox
 ```
 # download the cloud image
-cd /var/lib/vz/template/iso
+     cd /var/lib/vz/template/iso
 # latest LTS version
-wget https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+     wget https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
 
 # create a new VM
      qm create 7000 \
@@ -79,31 +79,32 @@ wget https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.i
 
 The next step is to configure a CD-ROM drive, which will be used to pass the Cloud-Init data to the VM.
 
- qm set 7000 --ide2 hdd1tb:cloudinit
+      qm set 7000 --ide2 hdd1tb:cloudinit
 
 To be able to boot directly from the Cloud-Init image, set the boot parameter to order=scsi0 to restrict BIOS to boot from this disk only. This will speed up booting, because VM BIOS skips the testing for a bootable CD-ROM.
 
-qm set 7000 --boot order=scsi0
+     qm set 7000 --boot order=scsi0
 
 For many Cloud-Init images, it is required to configure a serial console and use it as a display. If the configuration doesn’t work for a given image however, switch back to the default display instead.
 
-qm set 9000 --serial0 socket --vga serial0
+     qm set 9000 --serial0 socket --vga serial0
 
 In a last step, it is helpful to convert the VM into a template. From this template you can then quickly create linked clones. The deployment from VM templates is much faster than creating a full clone (copy).
 
-qm template 7000
+     qm template 7000
+
 
 #Testing creating VM Deployment
 
-qm clone 7000 123 --name ubuntu2
+     qm clone 7000 123 --name ubuntu2
 
-qm start 123
-qm set 123 --ciuser username
-qm set 123 --cipassword password
-qm set 123 --delete serial0
-qm set 123 --vga std  (For getting proxmox console)
-qm stop 123
-qm stop 123
+     qm start 123
+     qm set 123 --ciuser username
+     qm set 123 --cipassword password
+     qm set 123 --delete serial0
+     qm set 123 --vga std  (For getting proxmox console)
+     qm stop 123
+     qm stop 123
 
 #### Reference: #####
 https://pve.proxmox.com/pve-docs/chapter-qm.html#_preparing_cloud_init_templates
