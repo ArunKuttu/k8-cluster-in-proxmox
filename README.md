@@ -65,29 +65,45 @@ cd /var/lib/vz/template/iso
 wget https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
 
 # create a new VM
-qm create 100 --name "ubuntu-2204-jammy-cloudinit-template" --memory 4096 --cores 2 --net0 virtio,bridge=vmbr0
+     qm create 7000 \
+       --name ubuntu-2204-jammy-cloudinit-template \
+       --memory 2048 \
+       --cores 2 \
+       --net0 virtio,bridge=vmbr0 \
+       --scsihw virtio-scsi-pci
 
-# import the downloaded disk to local-lvm storage
-qm importdisk 100 jammy-server-cloudimg-amd64.img local-lvm
+#Import Cloud Image as SCSI Disk
 
-# finally attach the new disk to the VM as scsi drive
-qm set 100 --scsihw virtio-scsi-pci --scsi0 local-lvm:vm-100-disk-0
+     qm set 7000 --scsi0 local-lvm:0,import-from=/path/to/bionic-server-cloudimg-amd64.img
+#Add Cloud-Init CD-ROM drive
 
-# configure a CD-ROM drive, which will be used to pass the Cloud-Init data to the VM
-qm set 100 --ide2 local-lvm:cloudinit
+The next step is to configure a CD-ROM drive, which will be used to pass the Cloud-Init data to the VM.
 
-# to be able to boot directly from the Cloud-Init image, set the bootdisk parameter to scsi0
-qm set 100 --boot c --bootdisk scsi0
+ qm set 7000 --ide2 hdd1tb:cloudinit
 
-# configure a serial console and use it as a display
-qm set 100 --serial0 socket --vga serial0
+To be able to boot directly from the Cloud-Init image, set the boot parameter to order=scsi0 to restrict BIOS to boot from this disk only. This will speed up booting, because VM BIOS skips the testing for a bootable CD-ROM.
 
-# enable the agent
-qm set 100 --agent=1
+qm set 7000 --boot order=scsi0
 
-# convert the VM into a template
-qm template 100
-```
+For many Cloud-Init images, it is required to configure a serial console and use it as a display. If the configuration doesn’t work for a given image however, switch back to the default display instead.
+
+qm set 9000 --serial0 socket --vga serial0
+
+In a last step, it is helpful to convert the VM into a template. From this template you can then quickly create linked clones. The deployment from VM templates is much faster than creating a full clone (copy).
+
+qm template 7000
+
+Testing creating VM Deployment
+
+qm clone 7000 123 --name ubuntu2
+
+qm start 123
+qm set 123 --ciuser username
+qm set 123 --cipassword password
+qm set 123 --delete serial0
+qm set 123 --vga std  (For getting proxmox console)
+qm stop 123
+qm stop 123
 
 #### Reference: #####
 https://pve.proxmox.com/pve-docs/chapter-qm.html#_preparing_cloud_init_templates
